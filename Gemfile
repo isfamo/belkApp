@@ -3,7 +3,7 @@ source 'https://rubygems.org'
 
 
 # private gems
-source 'https://gems.salsify.com' do
+source 'https://repo.internal.salsify.com/api/gems/gems-salsify-restricted' do
   gem 'salsify', '~> 0.3.59'
 end
 
