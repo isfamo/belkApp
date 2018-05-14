@@ -1,0 +1,2 @@
+module SampleRequestHelper
+end
