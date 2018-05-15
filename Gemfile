@@ -11,7 +11,6 @@ end
 gem 'active_model_serializers'
 gem 'attr_encrypted'
 gem 'bugsnag'
-gem 'carrot-connector'
 gem 'delayed_job_active_record'
 gem 'hashie'
 gem 'ice_nine', require: ['ice_nine', 'ice_nine/core_ext/object']
@@ -24,16 +23,11 @@ gem 'pg'
 gem 'pry'
 gem 'builder'
 gem 'net-ssh'
-gem 'newrelic_rpm'
-gem 'nokogiri'
-gem 'rubytree'
-gem 'sucker_punch'
 
 # CORS Requests for api.host.com
 gem 'rack-cors', :require => 'rack/cors'
 
 group :development, :test do
-  gem 'csv-diff-report'
   gem 'sqlite3'
   gem 'database_cleaner'
   gem 'pry'
