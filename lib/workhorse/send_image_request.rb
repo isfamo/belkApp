@@ -21,7 +21,7 @@ module Workhorse
       photo_requests_to_send
       binding.pry
       # TODO: Iterate over products_to_send and generate xml
-      # TODO: Send xml to workhorse
+      # TODO: Send xml to workhorse   
       # TODO: Mark sample requests as sent to workhorse
     end
 
