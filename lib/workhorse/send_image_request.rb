@@ -24,19 +24,40 @@ module Workhorse
       # TODO: Mark sample requests as sent to workhorse
     end
 
+    # def photo_requests_to_send
+    #   @photo_requests_to_send ||= unsent_sample_requests.group_by do |sample_request|
+    #     sample_request.product_id
+    #   end.map do |style_id, sample_request|
+    #       binding.pry
+    #     color_master = retrieve_color_master(style_id, sample_request.first.color_id).try(:first)
+    #       binding.pry
+    #     next unless color_master
+    #     color_master = ColorMaster.new(color_master)
+    #       binding.pry
+    #     #color_master1.attributes
+    #     #biniding.pry
+    #     next unless color_master.valid?
+    #     color_master.to_xml()
+    #   end.compact
+    # end
     def photo_requests_to_send
       @photo_requests_to_send ||= unsent_sample_requests.group_by do |sample_request|
-        sample_request.product_id
-      end.map do |style_id, sample_request|
-        color_master = retrieve_color_master(style_id, sample_request.first.color_id).try(:first)
-        next unless color_master
-        color_master = ColorMaster.new(color_master)
+      
+        color_master = retrieve_color_master(sample_request.product_id, sample_request.color_id).try(:first)
+        #next unless color_master
+          color_master = ColorMaster.new(color_master)
+        color_master.to_xml()
+        end
+          
         #color_master1.attributes
         #biniding.pry
-        next unless color_master.valid?
-        color_master.to_xml()
-      end.compact
+        #unless color_master.valid?
+        #color_master.to_xml()
+        #end.compact
     end
+    # def formatFilterRequest
+    # 
+    # end
 
     def retrieve_color_master(style_id, nrf_color_code)
       salsify.products_filtered_by(
