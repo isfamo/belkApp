@@ -40,9 +40,9 @@ module Workhorse
               filter+="','Color Master?':'true'="
               end
           filter.slice!(0,filter.length-1)
-          puts(filter)
+      #    puts(filter)
           @photoRequests = retrieve_color_master(filter)
-          puts(@photoRequests)
+      #    puts(@photoRequests)
       
     end
     # def formatFilterRequest
