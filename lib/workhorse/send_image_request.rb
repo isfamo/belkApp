@@ -19,7 +19,6 @@ module Workhorse
 
     def run
       photo_requests_to_send
-      binding.pry
       # TODO: Iterate over products_to_send and generate xml
       # TODO: Send xml to workhorse   
       # TODO: Mark sample requests as sent to workhorse
@@ -32,8 +31,10 @@ module Workhorse
         color_master = retrieve_color_master(style_id, sample_request.first.color_id).try(:first)
         next unless color_master
         color_master = ColorMaster.new(color_master)
+        #color_master1.attributes
+        #biniding.pry
         next unless color_master.valid?
-        color_master
+        color_master.to_xml()
       end.compact
     end
 
