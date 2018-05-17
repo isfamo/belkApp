@@ -1,6 +1,6 @@
 module Workhorse
   class SendImageRequest
-    
+   #require 'net/sftp'
     MAX_IDS_PER_CRUD = 100.freeze
     PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
     PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
@@ -13,6 +13,7 @@ module Workhorse
       'ImageAssetSource'
     ].freeze
     @photoRequests
+    @fileName
     def self.run
       new.run
     end
@@ -21,7 +22,8 @@ module Workhorse
       photo_requests_to_send
       # TODO: Iterate over products_to_send and generate xml
       to_xml(@photoRequests)
-      # TODO: Send xml to workhorse   
+      # TODO: Send xml to workhorse  
+      transferFile 
       # TODO: Mark sample requests as sent to workhorse
     end
     
@@ -48,8 +50,19 @@ module Workhorse
     # def formatFilterRequest
     # 
     # end
+    def transferFile
+      require 'net/sftp'
+      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', :password => '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
+       # upload a file or directory to the remote host
+       binding.pry
+      sftp.upload!(@fileName, File.join('SalsifyImportToWH',File.basename(@fileName)))
+      
+    end
+    end
+    
     def to_xml(photoRequests)
     ##  puts(attributes.dept)
+      @fileName = '/Users/afusrg1/Subba/Ruby/belkApp/photoRequest/photoRequests_'+Time.now.strftime('%Y-%m-%d_%H-%M-%S')+'.xml'
       builder = Nokogiri::XML::Builder.new do |xml|
         xml.root {
           xml.Project {
@@ -66,6 +79,7 @@ module Workhorse
           }
         }
       end
+      File.write(@fileName, builder.to_xml)
       puts builder.to_xml
     end
     
@@ -90,6 +104,7 @@ module Workhorse
         organization_id: ENV.fetch('SALSIFY_ORG_SYSTEM_ID')
       )
     end
+    
     def getUnsentSampleRequest
       response = RestClient::Request.new({
         method: :get,

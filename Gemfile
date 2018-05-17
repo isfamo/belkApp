@@ -23,6 +23,7 @@ gem 'pg'
 gem 'pry'
 gem 'builder'
 gem 'net-ssh'
+gem 'net-sftp'
 
 # CORS Requests for api.host.com
 gem 'rack-cors', :require => 'rack/cors'
@@ -36,6 +37,7 @@ group :development, :test do
   gem 'fake_ftp'
   gem 'faker'
   gem 'timecop'
+  gem 'net-sftp'
 end
 
 group :development do
