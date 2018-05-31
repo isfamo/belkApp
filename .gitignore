@@ -11,10 +11,9 @@
 /log/*
 
 !/log/.keep
-!/tmp/.keep
 
 # Ignore Byebug command history file.
 .byebug_history
 
-bin/bundle
-bin/console
+/bin/*
+
