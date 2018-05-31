@@ -7,7 +7,7 @@ module ProcessResponse
   require "salsify"
 
   class ProcessWorkHorseResponse
-    LOCAL_DIR = "/Users/chatupu/Downloads/PREQ/".freeze
+    LOCAL_DIR = File.join(Dir.pwd, "tmp/ftp/").freeze
     WORKHORSE_TO_SALSIFY = "/SalsifyImportToWH".freeze
     FILE_EXTN = "*.xml".freeze
     ARCHIVE_EXTN = ".zip".freeze
