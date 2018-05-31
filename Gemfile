@@ -28,12 +28,13 @@ gem 'net-sftp'
 gem 'archive-zip'
 gem 'ruby-debug-ide'
 gem 'debase'
+gem 'tzinfo-data'
 
 # CORS Requests for api.host.com
 gem 'rack-cors', :require => 'rack/cors'
 
 group :development, :test do
-  gem 'sqlite3'
+#  gem 'sqlite3'
   gem 'database_cleaner'
   gem 'pry'
   gem 'rspec-rails'
