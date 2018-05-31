@@ -24,6 +24,10 @@ gem 'pry'
 gem 'builder'
 gem 'net-ssh'
 gem 'net-sftp'
+gem 'net-sftp'
+gem 'archive-zip'
+gem 'ruby-debug-ide'
+gem 'debase'
 
 # CORS Requests for api.host.com
 gem 'rack-cors', :require => 'rack/cors'
