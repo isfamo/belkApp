@@ -1,6 +1,7 @@
+frozen_string_literal: true.
 module Workhorse
   class SendImageRequest
-   #require 'net/sftp'
+    # require 'net/sftp'
     MAX_IDS_PER_CRUD = 100.freeze
     PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
     PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
