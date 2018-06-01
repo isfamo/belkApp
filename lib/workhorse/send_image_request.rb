@@ -1,94 +1,135 @@
+# frozen_string_literal: true
+
 module Workhorse
+  # transfer image request xml from Salsify to Workhorse
   class SendImageRequest
-   #require 'net/sftp'
-    MAX_IDS_PER_CRUD = 100.freeze
-    PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
-    PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
+    # require 'net/sftp'
+    MAX_IDS_PER_CRUD = 100
+    #  PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
+    #  PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
     SELECTIONS = [
       'Vendor#',
       'vendorNumber',
       'Dept#',
       'Class#',
       'Turn-In Date',
-      'ImageAssetSource'
+      'ImageAssetSource',
+      'fobNumber',
+      'deptName',
+      'Vendor  Name',
+      'Style#',
+      'Orin/Grouping #',
+      'Product Name',
+      'pim_nrfColorCode',
+      'vendorColorDescription',
+      'Class Description',
+      'Completion Date',
+      'product_id',
+      'nrfColorCode'
     ].freeze
-    @photoRequests
-    @fileName
+
+    @photo_requests
+    @sample_requests
+    @sample_request1
+    @file_name
     def self.run
       new.run
     end
 
     def run
-
-      binding.pry
+      # binding.pry
       photo_requests_to_send
       # TODO: Iterate over products_to_send and generate xml
-      binding.pry
-      to_xml(@photoRequests)
+      # binding.pry
+      to_xml(@photo_requests)
       # TODO: Send xml to workhorse
-      transferFile
-      binding.pry
+      transfer_file
+      # binding.pry
       # TODO: Mark sample requests as sent to workhorse
     end
 
-
     def photo_requests_to_send
-      smapleRequests = []
-      getUnsentSampleRequest
-      filter="="
-              @photo_requests.each  do |sample_request|
-                # TODO need to limit the number of products else request may get fail
-                 #next unless color_master
-              filter+="'Parent Product':'"
-              filter+= sample_request["product_id"]
-              filter+="','nrfColorCode':'"
-              filter+=sample_request["color_id"].strip
-              filter+="','Color Master?':'true'="
-              end
-              binding.pry
-          filter.slice!(0,filter.length-1)
-      #    puts(filter)
-           binding.pry
-          @photoRequests = retrieve_color_master(filter)
-      #    puts(@photoRequests)
+      #    smapleRequests = []
+      sample_req = sample_request.new
+      @sample_requests = sample_req.getUnsentsample_request
+      filter = '='
+      #  binding.pry
+      @sample_requests.each do |sample_request|
+        # TODO: need to limit the number of products else request may get fail
+        # next unless color_master
+        filter += "'Parent Product':'"
+        filter += sample_request['product_id']
+        filter += "','nrfColorCode':'"
+        filter += sample_request['color_id'].strip
+        filter += "','Color Master?':'true'="
+        @sample_request1 = sample_request
+      end
+      #  binding.pry
+      filter.slice!(0, filter.length - 1)
+      # binding.pry
+      @photo_requests = retrieve_color_master(filter)
 
+      #  puts(@photo_requests)
     end
+
     # def formatFilterRequest
     #
     # end
-    def transferFile
+    def transfer_file
       require 'net/sftp'
-      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', :password => '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
-       # upload a file or directory to the remote host
-       binding.pry
-      sftp.upload!(@fileName, File.join('SalsifyImportToWH',File.basename(@fileName)))
-
-
-    end
-    end
-
-    def to_xml(photoRequests)
-    ##  puts(attributes.dept)
-      @fileName = '/Users/afusrg1/Subba/Ruby/belkApp/photoRequest/photoRequests_'+Time.now.strftime('%Y-%m-%d_%H-%M-%S')+'.xml'
-      builder = Nokogiri::XML::Builder.new do |xml|
-        xml.root {
-          xml.Project {
-            photoRequests.each do |photo_request|
-            color_master=ColorMaster.new(photo_request)
-            xml.ShotGroup('id' => color_master.product_id, 'CollectionOrGroup' => 'N', 'SalsifyID' => '12345') {
-              xml.Image('id' => color_master.product_id){
-               xml.Sample('deptnnum' => '123'){
-                  xml.id_ "10"
-                }
-              }
-            }
-          end
-          }
-        }
+      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', password: '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
+        # upload a file or directory to the remote host
+        # binding.pry
+        sftp.upload!(@file_name, File.join('SalsifyImportToWH', File.basename(@file_name)))
       end
-      binding.pry
-      File.write(@fileName, builder.to_xml)
-      puts builder.to_xml
+    end
+
+    def to_xml(photo_requests)
+      ##  puts(attributes.dept)
+      @file_name = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
+      builder = Nokogiri::XML::Builder.new do |xml|
+        xml.root do
+          xml.Project do
+            photo_requests.each do |photo_request|
+              #    binding.pry
+              color_master = ColorMaster.new(photo_request)
+              #    color_master_heroku=ColorMasterHeroku.new(@sample_request1)
+              xml.ShotGroup('SalsifyID' => '') do
+                xml.Image(
+                  'ImageName' => "#{color_master.vendor_No}_#{color_master.style_no}_A_#{color_master.nrf_color_code}",
+                  'ShotView' => 'A',
+                  'ShotType' => '',
+                  'Collections' => 'N',
+                  'BuyerComments' => ''
+                ) do
+                  xml.Sample('FOB' => color_master.fobNumber,
+                             'Deptt_Nmbr' => color_master.dept_no,
+                             'Deptt_Nm' => color_master.dept_name,
+                             'Vndr_Nm' => color_master.vendor_name,
+                             'Vndr_ID' => color_master.vendor_No,
+                             'Style_Nmbr' => color_master.style_no,
+                             'Style_ORIN' => color_master.orin,
+                             'Prod_Nm' => color_master.prod_name,
+                             'Color_Nmbr' => color_master.pim_color,
+                             'Color_Nm' => color_master.vendor_color_desc,
+                             'Class_Nmbr' => color_master.class_no,
+                             'Class_Desc' => color_master.class_desc,
+                             'Completion_Date' => color_master.completion_date,
+                             'Prod_cd_Salsify' => color_master.product_id,
+                             'ECOMColorCd' => color_master.nrf_color_code,
+                             'ReturnTo' => '',
+                             'RequestedReturnDt' => '',
+                             'ReturnNotes' => '') do
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+      # binding.pry
+      File.write(@file_name, builder.to_xml)
+      # puts builder.to_xml
     end
 
     def retrieve_color_master(filter)
@@ -100,8 +141,8 @@ module Workhorse
 
     def unsent_sample_requests
       @unsent_sample_requests ||= [
-        SampleRequest.where(sent_to_workhorse: false),
-        SampleRequest.where(sent_to_workhorse: nil)
+        sample_request.where(sent_to_workhorse: false),
+        sample_request.where(sent_to_workhorse: nil)
       ].flatten
     end
 
@@ -112,25 +153,5 @@ module Workhorse
         organization_id: ENV.fetch('SALSIFY_ORG_SYSTEM_ID')
       )
     end
-
-    def getUnsentSampleRequest
-      response = RestClient::Request.new({
-        method: :get,
-        url: 'https://customer-belk-qa.herokuapp.com/api/workhorse/sample_requests?unsent=true',
-        headers: { :api_token => '4591D7EF39D6CFE0482778AACB8A0534B99DB31317D528E310373B1BC0E16E22' }
-      }).execute do |response, request, result|
-        case response.code
-        when 400
-            @photo_requests=JSON.parse(response.body)
-        when 200
-          @photo_requests=JSON.parse(response.body)
-        #  puts(@unsent_sample_requests)
-        #  [ :success, parse_json(response.to_str) ]
-        else
-          fail "Invalid response #{response.to_str} received."
-        end
-      end
-    end
-
   end
 end
