@@ -1,3 +1,4 @@
+# frozen_string_literal: true
 class ColorMaster
 
   attr_reader :response

@@ -1,4 +1,4 @@
-frozen_string_literal: true.
+# frozen_string_literal: true
 module Workhorse
   class SendImageRequest
     # require 'net/sftp'
