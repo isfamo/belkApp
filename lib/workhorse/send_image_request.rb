@@ -1,8 +1,9 @@
 # frozen_string_literal: true
+
 module Workhorse
   class SendImageRequest
     # require 'net/sftp'
-    MAX_IDS_PER_CRUD = 100.freeze
+    MAX_IDS_PER_CRUD = 100
     PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
     PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
     SELECTIONS = [
@@ -35,90 +36,82 @@ module Workhorse
     end
 
     def run
-
-      #binding.pry
+      # binding.pry
       photo_requests_to_send
       # TODO: Iterate over products_to_send and generate xml
-      #binding.pry
+      # binding.pry
       to_xml(@photoRequests)
       # TODO: Send xml to workhorse
       transferFile
-      #binding.pry
+      # binding.pry
       # TODO: Mark sample requests as sent to workhorse
     end
 
-
     def photo_requests_to_send
-  #    smapleRequests = []
+      #    smapleRequests = []
       sampleReq = SampleRequest.new
-    @sample_requests = sampleReq.getUnsentSampleRequest
-      filter="="
-    #  binding.pry
-              @sample_requests.each  do |sample_request|
-                # TODO need to limit the number of products else request may get fail
-                 #next unless color_master
-              filter+="'Parent Product':'"
-              filter+= sample_request["product_id"]
-              filter+="','nrfColorCode':'"
-              filter+=sample_request["color_id"].strip
-              filter+="','Color Master?':'true'="
-              @sample_request1 = sample_request
-          end
-            #  binding.pry
-          filter.slice!(0,filter.length-1)
-        # binding.pry
-          @photoRequests = retrieve_color_master(filter)
+      @sample_requests = sampleReq.getUnsentSampleRequest
+      filter = '='
+      #  binding.pry
+      @sample_requests.each do |sample_request|
+        # TODO: need to limit the number of products else request may get fail
+        # next unless color_master
+        filter += "'Parent Product':'"
+        filter += sample_request['product_id']
+        filter += "','nrfColorCode':'"
+        filter += sample_request['color_id'].strip
+        filter += "','Color Master?':'true'="
+        @sample_request1 = sample_request
+      end
+      #  binding.pry
+      filter.slice!(0, filter.length - 1)
+      # binding.pry
+      @photoRequests = retrieve_color_master(filter)
 
       #  puts(@photoRequests)
-
     end
+
     # def formatFilterRequest
     #
     # end
     def transferFile
       require 'net/sftp'
-      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', :password => '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
-       # upload a file or directory to the remote host
-       #binding.pry
-      sftp.upload!(@fileName, File.join('SalsifyImportToWH',File.basename(@fileName)))
-
-    end
+      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', password: '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
+        # upload a file or directory to the remote host
+        # binding.pry
+        sftp.upload!(@fileName, File.join('SalsifyImportToWH', File.basename(@fileName)))
+      end
     end
 
     def to_xml(photoRequests)
-    ##  puts(attributes.dept)
-      @fileName = 'C:\tmp\photoRequests_'+Time.now.strftime('%Y-%m-%d_%H-%M-%S')+'.xml'
+      ##  puts(attributes.dept)
+      @fileName = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
       builder = Nokogiri::XML::Builder.new do |xml|
-        xml.root {
-          xml.Project {
+        xml.root do
+          xml.Project do
             photoRequests.each do |photo_request|
-          #    binding.pry
-            color_master=ColorMaster.new(photo_request)
-        #    color_master_heroku=ColorMasterHeroku.new(@sample_request1)
-            xml.ShotGroup('SalsifyID' =>'') {
-              xml.Image('ImageName' => "#{color_master.vendor_No}_#{color_master.style_no}_A_#{color_master.nrf_color_code}",'ShotView' => 'A','ShotType' =>"",'Collections' => 'N','BuyerComments' => ''){
-               xml.Sample('FOB' => color_master.fobNumber,'Deptt_Nmbr' => color_master.dept_no, 'Deptt_Nm' => color_master.dept_name ,
-                          'Vndr_Nm' => color_master.vendor_name ,'Vndr_ID' =>color_master.vendor_No ,'Style_Nmbr' =>color_master.style_no ,
-                          'Style_ORIN' => color_master.orin ,'Prod_Nm'  => color_master.prod_name ,'Color_Nmbr' => color_master.pim_color ,
-                          'Color_Nm'  => color_master.vendor_color_desc, 'Class_Nmbr' =>color_master.class_no,'Class_Desc' =>color_master.class_desc,
-                          'Completion_Date' =>color_master.completion_date,'Prod_cd_Salsify' => color_master.product_id ,'ECOMColorCd' => color_master.nrf_color_code,
-                          'ReturnTo' => '','RequestedReturnDt' =>'','ReturnNotes' => ''
-
-                  ){
-
-
-
-                }
-              }
-            }
+              #    binding.pry
+              color_master = ColorMaster.new(photo_request)
+              #    color_master_heroku=ColorMasterHeroku.new(@sample_request1)
+              xml.ShotGroup('SalsifyID' => '') do
+                xml.Image('ImageName' => "#{color_master.vendor_No}_#{color_master.style_no}_A_#{color_master.nrf_color_code}", 'ShotView' => 'A', 'ShotType' => '', 'Collections' => 'N', 'BuyerComments' => '') do
+                  xml.Sample('FOB' => color_master.fobNumber, 'Deptt_Nmbr' => color_master.dept_no, 'Deptt_Nm' => color_master.dept_name,
+                             'Vndr_Nm' => color_master.vendor_name, 'Vndr_ID' => color_master.vendor_No, 'Style_Nmbr' => color_master.style_no,
+                             'Style_ORIN' => color_master.orin, 'Prod_Nm' => color_master.prod_name, 'Color_Nmbr' => color_master.pim_color,
+                             'Color_Nm' => color_master.vendor_color_desc, 'Class_Nmbr' => color_master.class_no, 'Class_Desc' => color_master.class_desc,
+                             'Completion_Date' => color_master.completion_date, 'Prod_cd_Salsify' => color_master.product_id, 'ECOMColorCd' => color_master.nrf_color_code,
+                             'ReturnTo' => '', 'RequestedReturnDt' => '', 'ReturnNotes' => '') do
+                  end
+                end
+              end
+            end
           end
-          }
-        }
+        end
       end
-      #binding.pry
+      # binding.pry
       File.write(@fileName, builder.to_xml)
-      puts builder.to_xml
-    end
+        # puts builder.to_xml
+      end
 
     def retrieve_color_master(filter)
       salsify.products_filtered_by(
