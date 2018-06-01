@@ -167,33 +167,33 @@ module ProcessResponse
       logger.debug('JOB FINISHED.')
     end
   end
-end
 
-## Download handler class
-class CustomDownloadHandler
-  attr_accessor :logger
+  ## Download handler class
+  class CustomDownloadHandler
+    attr_accessor :logger
 
-  def initialize
-    @logger = Logging::Log
-  end
+    def initialize
+      @logger = Logging::Log
+    end
 
-  def on_open(_downloader, file)
-    logger.debug('starting download: #{file.remote} -> #{file.local} (#{file.size} bytes)')
-  end
+    def on_open(_downloader, file)
+      logger.debug('starting download: #{file.remote} -> #{file.local} (#{file.size} bytes)')
+    end
 
-  def on_get(_downloader, file, offset, data)
-    logger.debug('writing #{data.length} bytes to #{file.local} starting at #{offset}')
-  end
+    def on_get(_downloader, file, offset, data)
+      logger.debug('writing #{data.length} bytes to #{file.local} starting at #{offset}')
+    end
 
-  def on_close(_downloader, file)
-    logger.debug('finished with #{file.remote}')
-  end
+    def on_close(_downloader, file)
+      logger.debug('finished with #{file.remote}')
+    end
 
-  def on_mkdir(_downloader, path)
-    logger.debug('creating directory #{path}')
-  end
+    def on_mkdir(_downloader, path)
+      logger.debug('creating directory #{path}')
+    end
 
-  def on_finish(_downloader)
-    logger.debug ('all done!')
+    def on_finish(_downloader)
+      logger.debug ('all done!')
+    end
   end
 end
