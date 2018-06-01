@@ -197,7 +197,7 @@ GEM
     ruby-debug-ide (0.6.1)
       rake (>= 0.8.1)
     ruby_dep (1.5.0)
-    salsify (0.3.71)
+    salsify (0.3.73)
       hashie (~> 3.4, >= 3.4.2)
       json (~> 1.8, >= 1.8.1)
       net-http-report
