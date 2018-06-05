@@ -12,7 +12,7 @@ module ProcessResponse
   # class to process work horse response.
   class ProcessWorkHorseResponse
     include Amadeus::Import
-    LOCAL_DIR = '/Users/chatupu/Downloads/preq'   #File.join(Dir.pwd, 'tmp/ftp/').freeze
+    LOCAL_DIR = File.join(Dir.pwd, 'tmp/ftp/').freeze
     WORKHORSE_TO_SALSIFY = '/SalsifyExportFromWH'
     FILE_EXTN = '*.xml'
     ARCHIVE_EXTN = '.zip'
