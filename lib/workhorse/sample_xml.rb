@@ -1,7 +1,8 @@
 # frozen_string_literal: true
-module RRDonnelley
-  class ProductPhotoRequests
 
+module RRDonnelley
+  # read xmls from workhorse to salsify
+  class ProductPhotoRequests
     attr_reader :product_photo_requests
 
     def initialize(product_photo_requests)
@@ -10,7 +11,7 @@ module RRDonnelley
 
     def self.from_xml(child)
       new(child.children.select do |child|
-        child.name.downcase == 'productphotorequest'
+        child.name.casecmp('productphotorequest').zero?
       end.map do |product_photo_request|
         ProductPhotoRequest.from_xml(product_photo_request)
       end)
@@ -25,13 +26,11 @@ module RRDonnelley
       end
       xml.target!
     end
-
   end
 end
 
 module RRDonnelley
   class ProductPhotoRequest
-
     attr_reader :car, :product, :photos
 
     def initialize(car: nil, product: nil, photos: nil)
@@ -43,15 +42,15 @@ module RRDonnelley
     def self.from_xml(child)
       new(
         car: {
-          'id' => child.children.find { |item|
-            item.name.downcase == 'car'
-          }.attributes['id'].value
+          'id' => child.children.find do |item|
+            item.name.casecmp('car').zero?
+          end.attributes['id'].value
         },
         product: Product.from_xml(child.children.find do |item|
-          item.name.downcase == 'product'
+          item.name.casecmp('product').zero?
         end),
         photos: child.children.find do |item|
-          item.name.downcase == 'photos'
+          item.name.casecmp('photos').zero?
         end.children.reject do |item|
           item.is_a?(Nokogiri::XML::Text) && item.text.strip.empty?
         end.map do |photo|
@@ -64,9 +63,7 @@ module RRDonnelley
       xml = Builder::XmlMarkup.new
       xml.tag!('productPhotoRequest') do |product_photo_request|
         product_photo_request.tag!('car', 'id' => car['id'])
-        if product
-          product_photo_request << product.to_xml
-        end
+        product_photo_request << product.to_xml if product
         if photos && !photos.empty?
           product_photo_request.tag!('photos') do |photos_tag|
             photos.each do |photo|
@@ -79,7 +76,6 @@ module RRDonnelley
     end
 
     class Product
-
       attr_reader :type, :name, :vendor, :style, :brand, :department, :_class
 
       def initialize(type: nil, name: nil, vendor: nil, style: nil, brand: nil, department: nil, _class: nil)
@@ -127,9 +123,9 @@ module RRDonnelley
         xml = Builder::XmlMarkup.new
         xml.tag!('product', {
           'type' => type
-        }.reject { |_, val|
+        }.reject do |_, val|
           val.nil? || val == ''
-        }) do |product|
+        end) do |product|
           product.tag!('name', name)
           product.tag!('vendor', 'id' => vendor['id']) do |vendor_tag|
             vendor_tag.tag!('name', vendor['name'])
@@ -145,11 +141,9 @@ module RRDonnelley
         end
         xml.target!
       end
-
     end
 
     class Photo
-
       attr_reader :type, :file, :instructions, :samples
 
       def initialize(type: nil, file: nil, instructions: nil, samples: nil)
@@ -163,35 +157,35 @@ module RRDonnelley
         photo_children = child.children.reject do |item|
           item.is_a?(Nokogiri::XML::Text) && item.text.strip.empty?
         end.each_with_object({}) do |item, hash|
-          if hash.include?(item.name)
-            hash[item.name] = [hash[item.name], item].flatten
-          else
-            hash[item.name] = item
-          end
+          hash[item.name] = if hash.include?(item.name)
+                              [hash[item.name], item].flatten
+                            else
+                              item
+                            end
         end
 
         new(
           type: child.attributes['type'].value,
           file: {
-            'OForSLvalue' => photo_children['file'].children.find { |item|
-              item.name.downcase == 'oforslvalue'
-            },
+            'OForSLvalue' => photo_children['file'].children.find do |item|
+              item.name.casecmp('oforslvalue').zero?
+            end,
             'name' => {
-              'prefix' => photo_children['file'].children.find { |item|
+              'prefix' => photo_children['file'].children.find do |item|
                 item.name == 'name'
-              }.children.find { |item|
+              end.children.find do |item|
                 item.name == 'prefix'
-              }.children.first.text
+              end.children.first.text
             }
           },
-          instructions: [photo_children['instructions']].flatten.compact.map { |item|
+          instructions: [photo_children['instructions']].flatten.compact.map do |item|
             item.children.first.text
-          },
-          samples: photo_children['samples'].children.reject { |item|
+          end,
+          samples: photo_children['samples'].children.reject do |item|
             item.is_a?(Nokogiri::XML::Text) && item.text.strip.empty?
-          }.map { |sample|
+          end.map do |sample|
             Sample.from_xml(sample)
-          }
+          end
         )
       end
 
@@ -223,7 +217,6 @@ module RRDonnelley
       end
 
       class Sample
-
         attr_reader :id, :type, :color, :return_requested, :return_information, :silhouette_required
 
         def initialize(id: nil, type: nil, color: nil, return_requested: nil, return_information: nil, silhouette_required: nil)
@@ -252,15 +245,15 @@ module RRDonnelley
             return_requested: sample_children['returnRequested'].text,
             return_information: {
               'shipping_account' => {
-                'carrier' => sample_children['returnInformation'].children.find { |item|
-                  item.name.downcase == 'shippingaccount'
-                }.attributes['carrier'].value
+                'carrier' => sample_children['returnInformation'].children.find do |item|
+                  item.name.casecmp('shippingaccount').zero?
+                end.attributes['carrier'].value
               },
-              'instructions' => sample_children['returnInformation'].children.select { |item|
-                item.name.downcase == 'instructions'
-              }.map { |item|
+              'instructions' => sample_children['returnInformation'].children.select do |item|
+                item.name.casecmp('instructions').zero?
+              end.map do |item|
                 item.children.first.text
-              }
+              end
             },
             silhouette_required: sample_children['silhouetteRequired'].text
           )
@@ -271,17 +264,15 @@ module RRDonnelley
           xml.tag!('sample', 'id' => id, 'type' => type) do |sample|
             if color && color['name'] && color['name'] != ''
               sample.tag!('color',
-                {
-                  'code' => color['code']
-                }.reject { |_, val|
-                  val.nil? || val == ''
-                }) do |color_tag|
+                          {
+                            'code' => color['code']
+                          }.reject do |_, val|
+                            val.nil? || val == ''
+                          end) do |color_tag|
                 color_tag.tag!('name', color['name'])
               end
             end
-            if return_requested && return_requested != ''
-              sample.tag!('returnRequested', return_requested)
-            end
+            sample.tag!('returnRequested', return_requested) if return_requested && return_requested != ''
             sample.tag!('returnInformation') do |return_information_tag|
               return_information_tag.tag!('shippingAccount', 'carrier' => return_information['shipping_account']['carrier'])
               if return_information['instructions'] && !return_information['instructions'].empty?
@@ -290,9 +281,7 @@ module RRDonnelley
                 end
               end
             end
-            if silhouette_required && silhouette_required != ''
-              sample.tag!('silhouetteRequired', silhouette_required)
-            end
+            sample.tag!('silhouetteRequired', silhouette_required) if silhouette_required && silhouette_required != ''
           end
           xml.target!
         end
