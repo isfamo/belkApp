@@ -5,9 +5,7 @@ module Workhorse
   class SendImageRequest
     # require 'net/sftp'
     MAX_IDS_PER_CRUD = 100
-    #  PROPERTY_NRF_COLOR_CODE = 'nrfColorCode'.freeze
-    #  PROPERTY_COLOR_MASTER = 'Color Master?'.freeze
-    SELECTIONS = [
+     SELECTIONS = [
       'Vendor#',
       'vendorNumber',
       'Dept#',
@@ -37,24 +35,31 @@ module Workhorse
     end
 
     def run
-      # binding.pry
-      photo_requests_to_send
+        photo_requests_to_send
       # TODO: Iterate over products_to_send and generate xml
-      # binding.pry
-      to_xml(@photo_requests)
+       to_xml(@photo_requests)
       # TODO: Send xml to workhorse
       transfer_file
-      # binding.pry
-      # TODO: Mark sample requests as sent to workhorse
+       # TODO: Mark sample requests as sent to workhorse
     end
 
     def photo_requests_to_send
-      #    smapleRequests = []
-      sample_req = sample_request.new
-      @sample_requests = sample_req.getUnsentsample_request
+      sample_req = SampleRequest.new
+      @sample_requests = sample_req.getUnsentSampleRequest
+      no_of_samples = @sample_requests.count
+      sample_limit = 10
+      puts "no of samples: #{no_of_samples}"
+      $i=1
+        while $i <= no_of_samples do
+        range_end = ($i+sample_limit -1 < no_of_samples) ? $i+sample_limit-1 : no_of_samples
+        getSalsifyData(@sample_requests[$i..range_end])
+          $i +=sample_limit
+        end
+     end
+
+     def getSalsifyData(samples)
       filter = '='
-      #  binding.pry
-      @sample_requests.each do |sample_request|
+       @sample_requests.each do |sample_request|
         # TODO: need to limit the number of products else request may get fail
         # next unless color_master
         filter += "'Parent Product':'"
@@ -62,31 +67,22 @@ module Workhorse
         filter += "','nrfColorCode':'"
         filter += sample_request['color_id'].strip
         filter += "','Color Master?':'true'="
-        @sample_request1 = sample_request
-      end
-      #  binding.pry
+       end
       filter.slice!(0, filter.length - 1)
       # binding.pry
       @photo_requests = retrieve_color_master(filter)
+     end
 
-      #  puts(@photo_requests)
-    end
-
-    # def formatFilterRequest
-    #
-    # end
-    def transfer_file
+     def transfer_file
       require 'net/sftp'
       Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', password: '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
         # upload a file or directory to the remote host
-        # binding.pry
-        sftp.upload!(@file_name, File.join('SalsifyImportToWH', File.basename(@file_name)))
+         sftp.upload!(@file_name, File.join('SalsifyImportToWH', File.basename(@file_name)))
       end
     end
 
     def to_xml(photo_requests)
-      ##  puts(attributes.dept)
-      @file_name = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
+       @file_name = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
       builder = Nokogiri::XML::Builder.new do |xml|
         xml.root do
           xml.Project do
@@ -114,7 +110,7 @@ module Workhorse
                              'Color_Nm' => color_master.vendor_color_desc,
                              'Class_Nmbr' => color_master.class_no,
                              'Class_Desc' => color_master.class_desc,
-                             'Completion_Date' => color_master.completion_date,
+                             'Completion_Date' => (color_master.completion_date),
                              'Prod_cd_Salsify' => color_master.product_id,
                              'ECOMColorCd' => color_master.nrf_color_code,
                              'ReturnTo' => '',
@@ -127,10 +123,8 @@ module Workhorse
           end
         end
       end
-      # binding.pry
-      File.write(@file_name, builder.to_xml)
-      # puts builder.to_xml
-    end
+       File.write(@file_name, builder.to_xml)
+     end
 
     def retrieve_color_master(filter)
       salsify.products_filtered_by(
