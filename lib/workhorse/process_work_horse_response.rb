@@ -9,7 +9,7 @@ module WorkHorse
   require 'salsify'
   require_relative '../utils/logging'
   require_relative '../utils/SendEMail'
-  require 'csv'
+  require 'json'
 
   # class to process work horse response.
   class ProcessWorkHorseResponse
@@ -31,6 +31,10 @@ module WorkHorse
       @json_import ||= JsonImport.new
     end
 
+    def self.run
+      new.run
+    end
+
     def salsify
       # puts @salsify.respond_to?('default_response_handler')
       salsify_client ||= Salsify::Client.create_with_token(
@@ -41,6 +45,7 @@ module WorkHorse
       salsify_client
     end
 
+    # Creates header for importing file in Salsify
     def add_header
       header = Header.new
       header.scope = []
@@ -48,13 +53,14 @@ module WorkHorse
       json_import.add_header(header)
     end
 
+    # Get the generic SFTP session object
     def get_sftp_connection(server, username, password)
       @sftp = Net::SFTP.start(server, username, password)
     rescue Exception => e
       logger.debug(e.message)
     end
 
-    ## Download the files from workhorse server to salsify server.
+    ## Download the files from workhorse server to salsify server. Delete the file from WorkHorse server after all the files are downloaded.
     def download_remotefiles
       logger.debug('DOWNLOADING FILES.')
       remote_files = []
@@ -97,16 +103,17 @@ module WorkHorse
       logger.debug('PARSING COMPLETED.')
     end
 
+    # parse and xml node and create a Hash to store the parsed xml data.
     def parse_xml(document)
       document.root.children.each do |project|
         project.children.each do |shotgrp|
           data = Hash.new
           salsify_ids_map[shotgrp['SalsifyID']] = data
-          if shotgrp.name.eq? 'ShotGroup'
+          if shotgrp.name.eql? 'ShotGroup'
             data['Ecomm Photo Status'] = shotgrp['ShotGroupStatus']
-            data['Image Specialist Task Status'] = 'Open' if shotgrp['ShotGroupStatus'].eq? 'Shots Selected'
+            data['Image Specialist Task Status'] = 'Open' if shotgrp['ShotGroupStatus'].eql? 'Shots Selected'
             shotgrp.children.each do |image|
-              if image.name.eq? 'Image'
+              if image.name.eql? 'Image'
                 image.children.each do |sample|
                   data['Sample Reject Reason'] = sample['RejectReason'] if sample.name.eql? 'Sample'
                 end
@@ -117,6 +124,7 @@ module WorkHorse
       end
     end
 
+    # unzip the zip files download from Workhorse SFTP server
     def unzip_files
       logger.debug('UNZIPPING ZIP FILES.')
       if !zip_files.empty?
@@ -146,33 +154,35 @@ module WorkHorse
       logger.debug('ALL FILES ZIPPED.')
     end
 
+    # Make api call to Heroku app to Get the details for ecomm photo requests.
     def get_request_details
       logger.debug('UPDATING THE PRODUCTS.')
-      # salsify_ids_map.keys.each_slice(1)
-      RestClient::Request.new(
-        method: :get,
-        url: ENV.fetch('URL'),
-        headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
-      ).execute do |response, _request, _result|
-        case response.code
-        when 400
-          @photo_requests = JSON.parse(response.body)
-        when 200
-          @photo_requests = JSON.parse(response.body)
-        else
-          #logger.debug("Invalid response #{response.to_str} received.")
+      salsify_ids_map.keys.each do |salsify_id|
+        photo_response
+        RestClient::Request.new(
+          method: :get,
+          url: ENV.fetch('HEROKU_API') + '/' + salsify_id,
+          headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
+        ).execute do |response, _request, _result|
+          case response.code
+          when 400
+            photo_response = JSON.parse(response.body)
+          when 200
+            photo_response = JSON.parse(response.body)
+          else
+            logger.debug("Invalid response #{response.to_str} received.")
+          end
+          # Add each response data in the product_map accessor
+          products_map["#{photo_response['id']}"] = photo_response['Requested_Color_Master_Sku']
         end
-        # puts 'response =>  ' + response.body
-        @photo_requests.each do |req|
-          #products_map["#{req['id']}"] = req['product_id']
-          products_map['1512826'] = '0400109985350'
-        end
+        #products_map['1512826'] = '0400109985350'
       end
       # nrfcolorCode = 'nrfColorCode'# colorMaster = 'Color Master? # product_id = 'product_id'# filterString ||= '='Parent Product':'1172567','Color Master?':'true''
       # response = salsifyClient.products_filtered_by(filter: filterString, selections: [product_id, colorMaster, nrfcolorCode], per_page: 250)
       logger.debug('PRODUCTS UPDATED.')
     end
 
+    # Create json import for parsed xml file
     def import_response
       salsify_ids_map.each do |id, value|
         product_data = {'product_id' => products_map[id]}
@@ -185,6 +195,7 @@ module WorkHorse
       run_import(file)
     end
 
+    # Import the json file in Salsify
     def run_imports(file)
       logger.debug('STARTING SALSIFY IMPORT FOR WORKHORSE.')
       begin
@@ -196,28 +207,43 @@ module WorkHorse
       logger.debug('SALSIFY IMPORT FOR WORKHORSE COMPLETED.')
     end
 
+    # Update the Heroku app DB with Rest API call.
     def update_workhorse_db
       logger.debug('UPDATING THE PRODUCTS.')
-      # salsify_ids_map.keys.each_slice(1)
       RestClient::Request.new(
         method: :put,
-        url: ENV.fetch('URL'),
+        url: ENV.fetch('HEROKU_API'),
+        payload: get_json(salsify_ids_map),
         headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
       ).execute do |response, _request, _result|
-        p response, _result, _request
         case response.code
         when 400
           @photo_requests = JSON.parse(response.body)
         when 200
           @photo_requests = JSON.parse(response.body)
         else
-          #logger.debug("Invalid response #{response.to_str} received.")
+          logger.debug("Invalid response #{response.to_str} received.")
         end
         # puts 'response =>  ' + response.body
 
       end
     end
 
+    # Creates a json structure to update Heroku app DB, Takes input as a Hashes of response from WorkHorse to Salsify
+    def get_json(map)
+      product = Hash.new
+      map.each do |key, value|
+        sample = Hash.new
+        sample['id'] = key.to_i
+        sample['Ecomm Photo Status'] = value['Ecomm Photo Status']
+        sample[' sample Reject Reason'] = value['Sample Reject Reason']
+        product[key.to_i] = sample
+      end
+      Oj.dump({sample_requests: product.values}.as_json, mode: :compat, indent: 0)
+    end
+
+    # 1) Upload archives files on belk-salsify FTP location.
+    # 2) Method will delete all the processed and archived files from tmp/ftp folder.
     def upload_delete_archive_files
       #time = Time.now.strftime('%Y-%d-%m_%H-%M-%S')
       logger.debug('UPLOADING ZIPPED FILES TO BELK FTP SERVER.')
@@ -238,22 +264,18 @@ module WorkHorse
       logger.debug('ALL FILES UPLOADED.')
     end
 
-    def self.run
-      new.run
-    end
-
     ## Main method of the class, it calls all the utility methods of the calls in a sequential order
     def run
       logger.debug('WORK HORSE PROCESS JOB STARTED.')
       file_count = download_remotefiles
       if file_count > 1
-        unzip_files
-        parse_photo_request_reponse_xml
-        get_request_details
-        import_response
-        update_workhorse_db
-        archive_files
-        upload_delete_archive_files
+        # unzip_files
+        #parse_photo_request_reponse_xml
+        #get_request_details
+        #import_response
+        #update_workhorse_db
+        #archive_files
+        #upload_delete_archive_files
       else
         logger.debug('NO FILES TO BE PROCESSED.')
       end

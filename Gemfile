@@ -30,7 +30,8 @@ gem 'ruby-debug-ide'
 gem 'debase'
 gem 'tzinfo-data'
 gem 'amadeus', '~> 1.2.2'
-gem  'mail'
+gem 'mail'
+gem 'oj'
 
 # CORS Requests for api.host.com
 gem 'rack-cors', :require => 'rack/cors'

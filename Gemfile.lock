@@ -273,6 +273,7 @@ DEPENDENCIES
   mail
   net-sftp
   net-ssh
+  oj
   pg
   postmark
   pry
