@@ -1,22 +1,23 @@
 # frozen_string_literal: true
 
 # module to process work horse response
-module ProcessResponse
+module WorkHorse
   require 'nokogiri'
   require 'net/sftp'
   require 'archive/zip'
   require 'pry'
   require 'salsify'
-  require 'logging'
+  require_relative '../utils/logging'
+  require_relative '../utils/SendEMail'
   require 'csv'
+
   # class to process work horse response.
   class ProcessWorkHorseResponse
     include Amadeus::Import
     LOCAL_DIR = File.join(Dir.pwd, 'tmp/ftp/').freeze
-    WORKHORSE_TO_SALSIFY = '/SalsifyExportFromWH'
-    FILE_EXTN = '*.xml'
-    ARCHIVE_EXTN = '.zip'
-    IMPORT_ID = 402459
+    WORKHORSE_TO_SALSIFY = '/SalsifyExportFromWH'.freeze
+    FILE_EXTN = '*.xml'.freeze
+    ARCHIVE_EXTN = '.zip'.freeze
     attr_accessor :salsify_ids_map, :products_map, :logger, :list_files, :zip_files, :salsify_client, :json_import
 
     # Initialize the class attributes
@@ -26,7 +27,7 @@ module ProcessResponse
       @zip_files = []
       @list_files = []
       @salsify_client = salsify
-      @logger = Logging::Log
+      @logger = Utils::Log
       @json_import ||= JsonImport.new
     end
 
@@ -47,24 +48,37 @@ module ProcessResponse
       json_import.add_header(header)
     end
 
+    def get_sftp_connection(server, username, password)
+      @sftp = Net::SFTP.start(server, username, password)
+    rescue Exception => e
+      logger.debug(e.message)
+    end
+
     ## Download the files from workhorse server to salsify server.
     def download_remotefiles
       logger.debug('DOWNLOADING FILES.')
-      # sftp= Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', :password => '5ada833014a4c092012ed3f8f82aa0c1')
-      # ENV.fetch('WORKHORSE_HOST_SERVER'), ENV.fetch('WORKHORSE_HOST_USERNAME'), :password => ENV.fetch('WORKHORSE_HOST_PASSWORD')
-      begin
-        Net::SFTP.start(ENV.fetch('WORKHORSE_HOST_SERVER'), ENV.fetch('WORKHORSE_HOST_USERNAME'), :password => ENV.fetch('WORKHORSE_HOST_PASSWORD')) do |sftp|
-          sftp.dir.glob(WORKHORSE_TO_SALSIFY, '*').each do |file|
-            file_name = file.name
-            sftp.download!(File.join(WORKHORSE_TO_SALSIFY, '/', file_name), File.join(LOCAL_DIR, file_name), :progress => CustomDownloadHandler.new)
-            zip_files.push(file_name) if File.extname(file_name).eql?('.zip')
-          end
+      remote_files = []
+      file_count = 0
+
+      get_sftp_connection(ENV.fetch('WORKHORSE_HOST_SERVER'), ENV.fetch('WORKHORSE_HOST_USERNAME'), :password => ENV.fetch('WORKHORSE_HOST_PASSWORD'))
+      @sftp.dir.glob(WORKHORSE_TO_SALSIFY, '*').each do |file|
+        begin
+          file_name = file.name
+          remote_file_path = File.join(WORKHORSE_TO_SALSIFY, '/', file_name)
+          @sftp.download!(remote_file_path, File.join(LOCAL_DIR, file_name), :progress => CustomDownloadHandler.new)
+          file_count += 1
+          remote_files.push(remote_file_path)
+          zip_files.push(file_name) if File.extname(file_name).eql?('.zip')
+        end
+        remote_files.each do |delete_file|
+          @sftp.remove!(delete_file)
         end
       rescue Exception => e
         logger.debug('Error is download file ' + e.message)
+        next
       end
-
       logger.debug('FILES DOWNLOADED.')
+      file_count
     end
 
     ## Parse the xml on salsify server, placed by 'readRemoteXML'  method.
@@ -88,13 +102,13 @@ module ProcessResponse
         project.children.each do |shotgrp|
           data = Hash.new
           salsify_ids_map[shotgrp['SalsifyID']] = data
-          if shotgrp.name == 'ShotGroup'
+          if shotgrp.name.eq? 'ShotGroup'
             data['Ecomm Photo Status'] = shotgrp['ShotGroupStatus']
-            data['Image Specialist Task Status'] = 'Open' if shotgrp['ShotGroupStatus'] == 'Shot Selected'
+            data['Image Specialist Task Status'] = 'Open' if shotgrp['ShotGroupStatus'].eq? 'Shots Selected'
             shotgrp.children.each do |image|
-              if image.name = 'Image'
+              if image.name.eq? 'Image'
                 image.children.each do |sample|
-                  data['Sample Reject Reason'] = sample['RejectReason'] if sample.name = 'Sample'
+                  data['Sample Reject Reason'] = sample['RejectReason'] if sample.name.eql? 'Sample'
                 end
               end
             end
@@ -114,29 +128,31 @@ module ProcessResponse
     end
 
     ## Archive the photo sample request xml files.
-    def zip_xml_files
+    def archive_files
       logger.debug('ZIPPING ALL FILES.')
       # time = Time.now.strftime('%Y-%d-%m_%H-%M-%S')
-      Dir.glob(File.join(LOCAL_DIR, FILE_EXTN)).each do |file|
-        list_files.push(file)
+      file_extn = ['.xml', '.json']
+      file_extn.each do |extension|
+        Dir.glob(File.join(LOCAL_DIR, extension)).each do |file|
+          list_files.push(file)
+        end
       end
       puts list_files.length
       list_files.each do |file|
-        Archive::Zip.archive((file + ARCHIVE_EXTN), file) if File.extname(file).eql?('.xml')
-      end
-      list_files.each do |file|
-        File.delete(file)
+        if (File.extname(file).eql?('.xml') || File.extname(file).eql?('.json'))
+          Archive::Zip.archive((file + ARCHIVE_EXTN), file)
+        end
       end
       logger.debug('ALL FILES ZIPPED.')
     end
 
-    def update_products
+    def get_request_details
       logger.debug('UPDATING THE PRODUCTS.')
       # salsify_ids_map.keys.each_slice(1)
       RestClient::Request.new(
         method: :get,
-        url: 'https://customer-belk-qa.herokuapp.com/api/workhorse/sample_requests?unsent=true',
-        headers: {:api_token => '4591D7EF39D6CFE0482778AACB8A0534B99DB31317D528E310373B1BC0E16E22'}
+        url: ENV.fetch('URL'),
+        headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
       ).execute do |response, _request, _result|
         case response.code
         when 400
@@ -170,22 +186,54 @@ module ProcessResponse
     end
 
     def run_imports(file)
-      response = Salsify::Utils::Import.start_import_with_new_file(salsify_client, IMPORT_ID, file, wait_until_complete: false)
-      puts response
+      logger.debug('STARTING SALSIFY IMPORT FOR WORKHORSE.')
+      begin
+        Salsify::Utils::Import.start_import_with_new_file(salsify_client, Rails.configuration.IMPORT_ID, file, wait_until_complete: false)
+      rescue Exception => e
+        logger.debug('Error while importing the salsify import file.' + e.message)
+        raise Exception.new ('Error while importing the salsify import file.')
+      end
+      logger.debug('SALSIFY IMPORT FOR WORKHORSE COMPLETED.')
     end
 
-    def upload_zip_files
+    def update_workhorse_db
+      logger.debug('UPDATING THE PRODUCTS.')
+      # salsify_ids_map.keys.each_slice(1)
+      RestClient::Request.new(
+        method: :put,
+        url: ENV.fetch('URL'),
+        headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
+      ).execute do |response, _request, _result|
+        p response, _result, _request
+        case response.code
+        when 400
+          @photo_requests = JSON.parse(response.body)
+        when 200
+          @photo_requests = JSON.parse(response.body)
+        else
+          #logger.debug("Invalid response #{response.to_str} received.")
+        end
+        # puts 'response =>  ' + response.body
+
+      end
+    end
+
+    def upload_delete_archive_files
       #time = Time.now.strftime('%Y-%d-%m_%H-%M-%S')
       logger.debug('UPLOADING ZIPPED FILES TO BELK FTP SERVER.')
       begin
-        Net::SFTP.start(ENV.fetch('SALSIFY_BELK_HOST_SERVER'), ENV.fetch('SALSIFY_BELK_HOST_USERNAME'), :password => ENV.fetch('SALSIFY_BELK_HOST_PASSWORD')) do |sftp|
+        get_sftp_connection(ENV.fetch('SALSIFY_BELK_HOST_SERVER'), ENV.fetch('SALSIFY_BELK_HOST_USERNAME'), :password => ENV.fetch('SALSIFY_BELK_HOST_PASSWORD')) do |sftp|
           list_files.each.each do |file|
             file_name = file + ARCHIVE_EXTN
-            sftp.upload(file_name, File.join(ENV.fetch('SALSIFY_WORKHORSE_FILE_LOC'), File.basename(file_name)))
+            @sftp.upload(file_name, File.join(ENV.fetch('SALSIFY_WORKHORSE_FILE_LOC'), File.basename(file_name)))
           end
         end
       rescue Exception => e
-        logger.debug('Error is processing file ' + e.message)
+        logger.debug('Error while uploading files ' + e.backtrace.join("\n"))
+      end
+
+      Dir.glob(File.join(LOCAL_DIR, '*')).each do |file|
+        File.delete(file)
       end
       logger.debug('ALL FILES UPLOADED.')
     end
@@ -197,13 +245,19 @@ module ProcessResponse
     ## Main method of the class, it calls all the utility methods of the calls in a sequential order
     def run
       logger.debug('WORK HORSE PROCESS JOB STARTED.')
-      download_remotefiles
-      unzip_files
-      parse_photo_request_reponse_xml
-      update_products
-      zip_xml_files
-      upload_zip_files
-      import_response
+      file_count = download_remotefiles
+      if file_count > 1
+        unzip_files
+        parse_photo_request_reponse_xml
+        get_request_details
+        import_response
+        update_workhorse_db
+        archive_files
+        upload_delete_archive_files
+      else
+        logger.debug('NO FILES TO BE PROCESSED.')
+      end
+
       logger.debug('JOB FINISHED.')
     end
   end
