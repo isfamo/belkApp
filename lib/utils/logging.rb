@@ -1,4 +1,4 @@
-module Logging
+module Utils
   require "logger"
 
   class Log

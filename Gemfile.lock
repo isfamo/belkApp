@@ -270,6 +270,7 @@ DEPENDENCIES
   hashie
   ice_nine
   listen
+  mail
   net-sftp
   net-ssh
   pg
