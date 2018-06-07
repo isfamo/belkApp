@@ -1,11 +1,15 @@
 # frozen_string_literal: true
 
+require 'logger'
+require 'net/sftp'
+require 'time'
+
 module Workhorse
   # transfer image request xml from Salsify to Workhorse
   class SendImageRequest
-    # require 'net/sftp'
+    attr_accessor :logger
     MAX_IDS_PER_CRUD = 100
-     SELECTIONS = [
+    SELECTIONS = [
       'Vendor#',
       'vendorNumber',
       'Dept#',
@@ -25,7 +29,9 @@ module Workhorse
       'product_id',
       'nrfColorCode'
     ].freeze
-
+    def initialize
+      @logger = Logging::Log
+    end
     @photo_requests
     @sample_requests
     @sample_request1
@@ -35,61 +41,81 @@ module Workhorse
     end
 
     def run
-        photo_requests_to_send
-      # TODO: Iterate over products_to_send and generate xml
-       to_xml(@photo_requests)
-      # TODO: Send xml to workhorse
+      logger.info('***** Image request job has started *****')
+      photo_requests_to_send
+      # Iterate over products_to_send and generate xml
+      to_xml(@photo_requests)
+      #  Send xml to workhorse
       transfer_file
-       # TODO: Mark sample requests as sent to workhorse
+      # TODO: Mark sample requests as sent to workhorse
+      # Archive the files to salsify ftp
+      archive_file
+      logger.info('***** Image request job completed *****')
     end
 
     def photo_requests_to_send
+      logger.debug('Collecting Samples data... ')
       sample_req = SampleRequest.new
-      @sample_requests = sample_req.getUnsentSampleRequest
+      @sample_requests = sample_req.get_unsent_sample_request
       no_of_samples = @sample_requests.count
       sample_limit = 10
-      puts "no of samples: #{no_of_samples}"
-      $i=1
-        while $i <= no_of_samples do
-        range_end = ($i+sample_limit -1 < no_of_samples) ? $i+sample_limit-1 : no_of_samples
-        getSalsifyData(@sample_requests[$i..range_end])
-          $i +=sample_limit
-        end
+      logger.info("no of samples: #{no_of_samples}")
+      logger.debug('Get data from salsify... ')
+      $i = 1
+      while $i <= no_of_samples
+        range_end = $i + sample_limit - 1 < no_of_samples ? $i + sample_limit - 1 : no_of_samples
+        get_salsify_data(@sample_requests[$i..range_end])
+        $i += sample_limit
+      end
      end
 
-     def getSalsifyData(samples)
+    def get_salsify_data(_samples)
       filter = '='
-       @sample_requests.each do |sample_request|
-        # TODO: need to limit the number of products else request may get fail
-        # next unless color_master
+      @sample_requests.each do |sample_request|
         filter += "'Parent Product':'"
         filter += sample_request['product_id']
         filter += "','nrfColorCode':'"
         filter += sample_request['color_id'].strip
         filter += "','Color Master?':'true'="
-       end
-      filter.slice!(0, filter.length - 1)
-      # binding.pry
-      @photo_requests = retrieve_color_master(filter)
-     end
-
-     def transfer_file
-      require 'net/sftp'
-      Net::SFTP.start('belkuat.workhorsegroup.us', 'BLKUATUSER', password: '5ada833014a4c092012ed3f8f82aa0c1') do |sftp|
-        # upload a file or directory to the remote host
-         sftp.upload!(@file_name, File.join('SalsifyImportToWH', File.basename(@file_name)))
       end
+      filter.slice!(0, filter.length - 1)
+
+      @photo_requests = retrieve_color_master(filter)
     end
 
+    def transfer_file
+      begin
+        Net::SFTP.start(ENV.fetch('WORKHORSE_HOST_SERVER'), ENV.fetch('WORKHORSE_HOST_USERNAME'), password: ENV.fetch('WORKHORSE_HOST_PASSWORD')) do |sftp|
+          logger.debug('SFTP connection created')
+          # upload  file to the remote host
+          sftp.upload!(@file_name, File.join('SalsifyImportToWH', File.basename(@file_name)))
+        end
+      rescue Exception => e
+        logger.debug('Error while copying the feed file to workhorse' + e.message)
+      end
+      logger.info('File transfer completed')
+   end
+
+    def archive_file
+      begin
+        Net::SFTP.start(ENV.fetch('SALSIFY_BELK_HOST_SERVER'), ENV.fetch('SALSIFY_BELK_HOST_USERNAME'), password: ENV.fetch('SALSIFY_BELK_HOST_PASSWORD')) do |sftp|
+          logger.debug('SFTP connection created')
+          sftp.upload!(@file_name, File.join(ENV.fetch('PHOTO_REQUEST_ARCHIVE_LOC'), File.basename(@file_name)))
+        end
+      rescue Exception => e
+        logger.debug('Error while copying the feed file to salsify ftp' + e.message)
+      end
+      logger.info('File archiving completed')
+   end
+
     def to_xml(photo_requests)
-       @file_name = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
+      @file_name = 'C:\tmp\photoRequests_' + Time.now.strftime('%Y-%m-%d_%H-%M-%S') + '.xml'
       builder = Nokogiri::XML::Builder.new do |xml|
         xml.root do
           xml.Project do
             photo_requests.each do |photo_request|
-              #    binding.pry
               color_master = ColorMaster.new(photo_request)
-              #    color_master_heroku=ColorMasterHeroku.new(@sample_request1)
+
               xml.ShotGroup('SalsifyID' => '') do
                 xml.Image(
                   'ImageName' => "#{color_master.vendor_No}_#{color_master.style_no}_A_#{color_master.nrf_color_code}",
@@ -110,7 +136,7 @@ module Workhorse
                              'Color_Nm' => color_master.vendor_color_desc,
                              'Class_Nmbr' => color_master.class_no,
                              'Class_Desc' => color_master.class_desc,
-                             'Completion_Date' => (color_master.completion_date),
+                             'Completion_Date' => color_master.completion_date,
                              'Prod_cd_Salsify' => color_master.product_id,
                              'ECOMColorCd' => color_master.nrf_color_code,
                              'ReturnTo' => '',
@@ -123,7 +149,9 @@ module Workhorse
           end
         end
       end
-       File.write(@file_name, builder.to_xml)
+      File.write(@file_name, builder.to_xml)
+     rescue Exception => e
+       logger.error('Exception while building the xml: ' + e.message)
      end
 
     def retrieve_color_master(filter)

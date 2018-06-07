@@ -9,7 +9,12 @@ module Logging
     def self.debug(message)
       @@logs.debug(message)
     end
-
+    def self.info(message)
+      @@logs.info(message)
+    end
+    def self.error(message)
+      @@logs.error(message)
+    end
     private_class_method :new
   end
 end
