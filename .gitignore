@@ -21,4 +21,5 @@
 
 .vscode/launch.json
 Gemfile.lock
-tmp/belkApp.log
+tmp/*
+.env
