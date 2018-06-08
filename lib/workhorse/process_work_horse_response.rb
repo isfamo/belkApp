@@ -18,7 +18,7 @@ module WorkHorse
     WORKHORSE_TO_SALSIFY = '/SalsifyExportFromWH'.freeze
     FILE_EXTN = '*.xml'.freeze
     ARCHIVE_EXTN = '.zip'.freeze
-    attr_accessor :salsify_ids_map, :products_map, :logger, :list_files, :zip_files, :salsify_client, :json_import
+    attr_accessor :salsify_ids_map, :products_map, :logger, :list_files, :zip_files, :salsify_client, :json_import, :remote_workhorse_files
 
     # Initialize the class attributes
     def initialize
@@ -26,6 +26,7 @@ module WorkHorse
       @products_map = {}
       @zip_files = []
       @list_files = []
+      @remote_workhorse_files = []
       @salsify_client = salsify
       @logger = Utils::Log
       @json_import ||= JsonImport.new
@@ -38,9 +39,9 @@ module WorkHorse
     def salsify
       # puts @salsify.respond_to?('default_response_handler')
       salsify_client ||= Salsify::Client.create_with_token(
-        ENV.fetch('SALSIFY_USER_EMAIL'),
-        ENV.fetch('SALSIFY_API_TOKEN'),
-        organization_id: ENV.fetch('SALSIFY_ORG_SYSTEM_ID')
+        Rails.configuration.SALSIFY_USER_EMAIL,
+        Rails.configuration.SALSIFY_API_TOKEN,
+        organization_id: Rails.configuration.SALSIFY_ORG_SYSTEM_ID
       )
       salsify_client
     end
@@ -63,21 +64,17 @@ module WorkHorse
     ## Download the files from workhorse server to salsify server. Delete the file from WorkHorse server after all the files are downloaded.
     def download_remotefiles
       logger.debug('DOWNLOADING FILES.')
-      remote_files = []
       file_count = 0
 
-      get_sftp_connection(ENV.fetch('WORKHORSE_HOST_SERVER'), ENV.fetch('WORKHORSE_HOST_USERNAME'), :password => ENV.fetch('WORKHORSE_HOST_PASSWORD'))
+      get_sftp_connection(Rails.configuration.WORKHORSE_HOST_SERVER, Rails.configuration.WORKHORSE_HOST_USERNAME, :password => Rails.configuration.WORKHORSE_HOST_PASSWORD)
       @sftp.dir.glob(WORKHORSE_TO_SALSIFY, '*').each do |file|
         begin
           file_name = file.name
           remote_file_path = File.join(WORKHORSE_TO_SALSIFY, '/', file_name)
           @sftp.download!(remote_file_path, File.join(LOCAL_DIR, file_name), :progress => CustomDownloadHandler.new)
           file_count += 1
-          remote_files.push(remote_file_path)
+          remote_workhorse_files.push(remote_file_path)
           zip_files.push(file_name) if File.extname(file_name).eql?('.zip')
-        end
-        remote_files.each do |delete_file|
-          @sftp.remove!(delete_file)
         end
       rescue Exception => e
         logger.debug('Error is download file ' + e.message)
@@ -85,6 +82,13 @@ module WorkHorse
       end
       logger.debug('FILES DOWNLOADED.')
       file_count
+    end
+
+    def delete_files_on_workhorse
+      get_sftp_connection(Rails.configuration.WORKHORSE_HOST_SERVER, Rails.configuration.WORKHORSE_HOST_USERNAME, :password => Rails.configuration.WORKHORSE_HOST_PASSWORD)
+      remote_workhorse_files.each do |delete_file|
+        @sftp.remove!(delete_file)
+      end
     end
 
     ## Parse the xml on salsify server, placed by 'readRemoteXML'  method.
@@ -99,7 +103,6 @@ module WorkHorse
           next
         end
       end
-      puts salsify_ids_map
       logger.debug('PARSING COMPLETED.')
     end
 
@@ -158,22 +161,21 @@ module WorkHorse
     def get_request_details
       logger.debug('UPDATING THE PRODUCTS.')
       salsify_ids_map.keys.each do |salsify_id|
-        photo_response
         RestClient::Request.new(
           method: :get,
-          url: ENV.fetch('HEROKU_API') + '/' + salsify_id,
-          headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
+          url: Rails.configuration.HEROKU_API + '/' + salsify_id,
+          headers: {:api_token => Rails.configuration.HEROKU_API_TOKEN}
         ).execute do |response, _request, _result|
           case response.code
           when 400
-            photo_response = JSON.parse(response.body)
+            @photo_response = JSON.parse(response.body)
           when 200
-            photo_response = JSON.parse(response.body)
+            @photo_response = JSON.parse(response.body)
           else
             logger.debug("Invalid response #{response.to_str} received.")
           end
           # Add each response data in the product_map accessor
-          products_map["#{photo_response['id']}"] = photo_response['Requested_Color_Master_Sku']
+          products_map["#{@photo_response['id']}"] = @photo_response['Requested_Color_Master_Sku']
         end
         #products_map['1512826'] = '0400109985350'
       end
@@ -212,9 +214,9 @@ module WorkHorse
       logger.debug('UPDATING THE PRODUCTS.')
       RestClient::Request.new(
         method: :put,
-        url: ENV.fetch('HEROKU_API'),
+        url: Rails.configuration.HEROKU_API,
         payload: get_json(salsify_ids_map),
-        headers: {:api_token => ENV.fetch('HEROKU_API_TOKEN')}
+        headers: {:api_token => Rails.configuration.HEROKU_API_TOKEN}
       ).execute do |response, _request, _result|
         case response.code
         when 400
@@ -235,11 +237,12 @@ module WorkHorse
       map.each do |key, value|
         sample = Hash.new
         sample['id'] = key.to_i
-        sample['Ecomm Photo Status'] = value['Ecomm Photo Status']
-        sample[' sample Reject Reason'] = value['Sample Reject Reason']
+        sample['Ecomm_Photo_Status'] = value['Ecomm Photo Status']
+        sample['Sample_Reject_Reason'] = value['Sample Reject Reason']
+        sample['updated_at'] = Time.new
         product[key.to_i] = sample
       end
-      Oj.dump({sample_requests: product.values}.as_json, mode: :compat, indent: 0)
+      Oj.dump({sample_requests: product.values}.as_json, mode: :compat, indent: 2)
     end
 
     # 1) Upload archives files on belk-salsify FTP location.
@@ -248,10 +251,10 @@ module WorkHorse
       #time = Time.now.strftime('%Y-%d-%m_%H-%M-%S')
       logger.debug('UPLOADING ZIPPED FILES TO BELK FTP SERVER.')
       begin
-        get_sftp_connection(ENV.fetch('SALSIFY_BELK_HOST_SERVER'), ENV.fetch('SALSIFY_BELK_HOST_USERNAME'), :password => ENV.fetch('SALSIFY_BELK_HOST_PASSWORD')) do |sftp|
+        get_sftp_connection(Rails.configuration.SALSIFY_BELK_HOST_SERVER, Rails.configuration.SALSIFY_BELK_HOST_USERNAME, :password => Rails.configuration.SALSIFY_BELK_HOST_PASSWORD) do |sftp|
           list_files.each.each do |file|
             file_name = file + ARCHIVE_EXTN
-            @sftp.upload(file_name, File.join(ENV.fetch('SALSIFY_WORKHORSE_FILE_LOC'), File.basename(file_name)))
+            @sftp.upload(file_name, File.join(Rails.configuration.SALSIFY_WORKHORSE_FILE_LOC, File.basename(file_name)))
           end
         end
       rescue Exception => e
@@ -267,15 +270,17 @@ module WorkHorse
     ## Main method of the class, it calls all the utility methods of the calls in a sequential order
     def run
       logger.debug('WORK HORSE PROCESS JOB STARTED.')
+      file_count = 0
       file_count = download_remotefiles
       if file_count > 1
-        # unzip_files
-        #parse_photo_request_reponse_xml
-        #get_request_details
-        #import_response
-        #update_workhorse_db
-        #archive_files
-        #upload_delete_archive_files
+        unzip_files
+        parse_photo_request_reponse_xml
+        get_request_details
+        import_response
+        update_workhorse_db
+        archive_files
+        upload_delete_archive_files
+        delete_files_on_workhorse
       else
         logger.debug('NO FILES TO BE PROCESSED.')
       end
@@ -289,7 +294,7 @@ module WorkHorse
     attr_accessor :logger
 
     def initialize
-      @logger = Logging::Log
+      @logger = Utils::Log
     end
 
     def on_open(_downloader, file)
